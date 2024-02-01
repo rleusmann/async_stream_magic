@@ -5,7 +5,7 @@ import asyncio
 import socket
 from dataclasses import dataclass
 from importlib import metadata
-from typing import Any, Optional, Type, TypedDict
+from typing import Any, Optional, Type
 
 import async_timeout
 from aiohttp.client import ClientError, ClientResponseError, ClientSession
@@ -50,6 +50,7 @@ class StreamMagic:
         await self.close()
         return None
     
+    
     async def _request(self, path: str,
                        query: str = "",
                        method: str = METH_GET,
@@ -91,7 +92,7 @@ class StreamMagic:
             socket.gaierror,
         ) as exception:
             raise StreamMagicConnectionError(
-                "Error occurred while communicating with StreamMagic device"
+                {"Error occurred while communicating with StreamMagic device", exception}
             ) from exception
 
         content_type = response.headers.get("Content-Type", "")
@@ -165,5 +166,5 @@ class StreamMagic:
 
     async def set_source(self, source: Source) -> None:
         """Set the power of StreamMagic device on."""
-        query = ("zone=ZONE1&source=", Source.id)
+        query = "zone=ZONE1&source=" + source.id
         await self._request(path="/smoip/zone/state", query=query)
