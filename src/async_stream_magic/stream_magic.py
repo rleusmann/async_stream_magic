@@ -2,17 +2,17 @@
 from __future__ import annotations
 
 import asyncio
-import socket
 from dataclasses import dataclass
 from importlib import metadata
 from typing import Any, Optional, Type
 
 import async_timeout
-from aiohttp.client import ClientError, ClientResponseError, ClientSession
+from aiohttp.client import ClientSession
 from aiohttp.hdrs import METH_GET
+from aiohttp_retry import RetryClient, ExponentialRetry
 from yarl import URL
 
-from .exceptions import StreamMagicConnectionError, StreamMagicError
+from .exceptions import StreamMagicError
 from .models import Info, Source, State
 
 @dataclass
@@ -75,33 +75,10 @@ class StreamMagic:
             "Accept": "application/json, text/plain, */*",
         }
 
-        try:
-            async with async_timeout.timeout(self._request_timeout):
-                response = await self._session.get(
-                url,
-                headers=headers,
-                )
-                response.raise_for_status()
-        except asyncio.TimeoutError as exception:
-            raise StreamMagicConnectionError(
-                "Timeout occurred while connecting to Elgato Light device"
-            ) from exception
-        except (
-            ClientError,
-            ClientResponseError,
-            socket.gaierror,
-        ) as exception:
-            raise StreamMagicConnectionError(
-                {"Error occurred while communicating with StreamMagic device", exception}
-            ) from exception
+        retry_options = ExponentialRetry(attempts=5)
+        retry_client = RetryClient(client_session=self._session, retry_options=retry_options, raise_for_status=True)
 
-        content_type = response.headers.get("Content-Type", "")
-        if "application/json" not in content_type:
-            text = await response.text()
-            raise StreamMagicError(
-                "Unexpected response from the StreamMagic device",
-                {"Content-Type": content_type, "response": text},
-            )
+        response = await retry_client.get(url,headers=headers,)
         await asyncio.sleep(0)
         return await response.json()
 
