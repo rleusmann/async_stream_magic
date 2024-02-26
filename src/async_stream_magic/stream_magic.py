@@ -4,15 +4,17 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from importlib import metadata
+import socket
 from typing import Any, Optional, Type
+
+from aiohttp import ClientError, ClientResponseError
 
 import async_timeout
 from aiohttp.client import ClientSession
 from aiohttp.hdrs import METH_GET
-from aiohttp_retry import RetryClient, ExponentialRetry
 from yarl import URL
 
-from .exceptions import StreamMagicError
+from .exceptions import StreamMagicError, StreamMagicConnectionError
 from .models import Info, Source, State
 
 @dataclass
@@ -75,10 +77,35 @@ class StreamMagic:
             "Accept": "application/json, text/plain, */*",
         }
 
-        retry_options = ExponentialRetry(attempts=5)
-        retry_client = RetryClient(client_session=self._session, retry_options=retry_options, raise_for_status=True)
+        try:
+            async with async_timeout.timeout(self._request_timeout):
+                response = await self._session.get(
+                url,
+                headers=headers,
+                )
+                response.raise_for_status()
+        except asyncio.TimeoutError as exception:
+            raise StreamMagicConnectionError(
+                "Timeout occurred while connecting to StreamMagic device"
+            ) from exception
+        except (
+            ClientError,
+            ClientResponseError,
+            socket.gaierror
+        ) as exception:
+            raise StreamMagicConnectionError(
+                {"Error occurred while communicating with StreamMagic device", exception}
+            ) from exception
+        except Exception as exception:
+            print(exception)
 
-        response = await retry_client.get(url,headers=headers,)
+        content_type = response.headers.get("Content-Type", "")
+        if "application/json" not in content_type:
+            text = await response.text()
+            raise StreamMagicError(
+                "Unexpected response from StreamMagic device",
+                {"Content-Type": content_type, "response": text},
+            )
         await asyncio.sleep(0)
         return await response.json()
 
@@ -90,7 +117,7 @@ class StreamMagic:
         data = await self._request(path="/smoip/system/info")
         return Info.parse_obj(data["data"])
 
-    async def get_sources(self) -> list(Source):
+    async def get_sources(self) -> list(Source): # type: ignore
         """Get source list from StreamMagic device.
         Returns:
             A Settings object, with information about the StreamMagic device.

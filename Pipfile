@@ -4,13 +4,15 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-pydantic = "*"
 aiohttp = "*"
+pydantic = "*"
+typing = "*"
+dataclasses = "*"
 yarl = "*"
+async-timeout = "*"
 build = "*"
-aiohttp-retry = "*"
 
 [dev-packages]
 
 [requires]
-python_version = ">=3.11.0"
+python_version = "3.11"
